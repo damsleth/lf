@@ -27,27 +27,34 @@ func (sxs *sixelScreen) printSixel(win *win, screen tcell.Screen, reg *reg) {
 		return
 	}
 
-	cw, ch, err := cellSize(screen)
-	if err != nil {
-		log.Printf("sixel: %s", err)
-		return
-	}
-
+	cw, ch := -1, -1
 	y := win.y
 	var b strings.Builder
 
 	for _, line := range reg.lines {
 		if !strings.HasPrefix(line, "\033P") {
-			if y >= win.y+win.h {
+			line, h := renderRawLine(line, win.w)
+			if y+h > win.y+win.h {
 				break
 			}
 
-			line = sanitizePreview(line)
-			screen.LockRegion(win.x, y, printLength(line), 1, true)
-			fmt.Fprintf(&b, "\033[%d;%dH", y+1, win.x+1)
-			b.WriteString(line)
-			y++
+			// Blank all rows first: in kitty, writing over any cell of a
+			// multicell (OSC 66) run erases the whole run.
+			screen.LockRegion(win.x, y, win.w, h, true)
+			for r := range h {
+				fmt.Fprintf(&b, "\033[0m\033[%d;%dH%s", y+r+1, win.x+1, strings.Repeat(" ", win.w))
+			}
+			fmt.Fprintf(&b, "\033[%d;%dH%s\033[0m\033]8;;\033\\", y+1, win.x+1, line)
+			y += h
 			continue
+		}
+
+		if cw < 0 {
+			var err error
+			if cw, ch, err = cellSize(screen); err != nil {
+				log.Printf("sixel: %s", err)
+				continue
+			}
 		}
 
 		matches := reSixelSize.FindStringSubmatch(line)

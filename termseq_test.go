@@ -288,3 +288,42 @@ func TestApplySGR(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderRawLine(t *testing.T) {
+	gOpts.tabstop = 8
+
+	tests := []struct {
+		s      string
+		maxw   int
+		exp    string
+		height int
+	}{
+		{"hello", 10, "hello", 1},                           // plain text
+		{"hello world", 5, "hello", 1},                      // clipped
+		{"a\tb", 20, "a       b", 1},                        // tab expanded to pane column
+		{"\x1b[31mRed\x1b[0m", 10, "\x1b[31mRed\x1b[0m", 1}, // SGR kept
+
+		// OSC 66 text sizing
+		{"\x1b]66;s=2;Title\x07", 40, "\x1b]66;s=2;Title\x07", 2},                                       // BEL
+		{"\x1b[1m\x1b]66;s=2:n=3:d=4;H\x1b\\\x1b[0m", 10, "\x1b[1m\x1b]66;s=2:n=3:d=4;H\x07\x1b[0m", 2}, // ST, fractional
+		{"\x1b]66;s=2;Title\x07after", 6, "\x1b]66;s=2;Tit\x07", 2},                                     // clipped per grapheme, rest dropped
+		{"\x1b]66;s=2:w=3;abc\x07", 5, "", 1},                                                           // explicit width doesn't fit
+		{"\x1b]66;s=2:w=3;abc\x07x", 7, "\x1b]66;s=2:w=3;abc\x07x", 2},                                  // w is the whole run's width
+		{"\x1b[01;31m\x1b[KRed", 10, "\x1b[01;31mRed", 1},                                               // EL dropped
+		{"\x1b]66;s=2;a\u009bb\x07", 10, "\x1b]66;s=2;a�b\x07", 2},                                      // control in payload
+
+		// rejected: shown as text with U+FFFD, never passed through
+		{"\x1b]66;s=9;X\x07", 20, "�]66;s=9;X�", 1},         // scale out of range
+		{"\x1b]66;n=3:d=2;X\x07", 20, "�]66;n=3:d=2;X�", 1}, // d <= n
+		{"\x1b]66;q=1;X\x07", 20, "�]66;q=1;X�", 1},         // unknown key
+		{"\x1b]52;c;aGk=\x07", 20, "�]52;c;aGk=�", 1},       // OSC 52 clipboard write
+		{"\x1b[2J", 20, "�[2J", 1},                          // cursor/erase CSI
+	}
+
+	for _, test := range tests {
+		got, h := renderRawLine(test.s, test.maxw)
+		if got != test.exp || h != test.height {
+			t.Errorf("renderRawLine(%q, %d) = %q, %d; expected %q, %d", test.s, test.maxw, got, h, test.exp, test.height)
+		}
+	}
+}

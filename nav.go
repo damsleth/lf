@@ -952,6 +952,15 @@ func (nav *nav) preview(path string, win *win, mode string) {
 		for i, l := range lines {
 			lines[i] = sanitizePreview(l)
 		}
+	} else if !binary && !sixel {
+		// OSC 66 (kitty text sizing) lines can be taller than one row,
+		// which tcell can't lay out, so they are drawn raw like sixels.
+		for _, l := range lines {
+			if strings.Contains(l, "\033]66;") {
+				sixel = true
+				break
+			}
+		}
 	}
 
 	reg.lines = lines
