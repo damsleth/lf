@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -352,4 +353,116 @@ func isPrintable(gc string) bool {
 		return false
 	}
 	return !isControlChar(r)
+}
+
+var reMulticell = regexp.MustCompile(`^\x1b\]66;((?:[swndvh]=\d{1,2})(?::[swndvh]=\d{1,2})*)?;([^\x07\x1b]*)(?:\x07|\x1b\\)`)
+
+// readMulticell parses an OSC 66 (kitty text sizing) sequence at the start of
+// s, see https://sw.kovidgoyal.net/kitty/text-sizing-protocol/. It returns the
+// sequence length (0 if s doesn't start with a well-formed one), the scale,
+// the explicit width in cells (0 = measure the text), the metadata and the text.
+func readMulticell(s string) (n, scale, width int, meta, text string) {
+	m := reMulticell.FindStringSubmatch(s)
+	if m == nil {
+		return 0, 0, 0, "", ""
+	}
+
+	scale = 1
+	var num, den int
+	if m[1] != "" {
+		for kv := range strings.SplitSeq(m[1], ":") {
+			k, v, _ := strings.Cut(kv, "=")
+			x, _ := strconv.Atoi(v)
+			switch {
+			case k == "s" && x >= 1 && x <= 7:
+				scale = x
+			case k == "w" && x <= 7:
+				width = x
+			case k == "n" && x <= 15:
+				num = x
+			case k == "d" && x <= 15:
+				den = x
+			case (k == "v" || k == "h") && x <= 2:
+			default:
+				return 0, 0, 0, "", ""
+			}
+		}
+	}
+	if den != 0 && den <= num {
+		return 0, 0, 0, "", ""
+	}
+
+	return len(m[0]), scale, width, m[1], m[2]
+}
+
+// renderRawLine rebuilds a preview line for writing straight to the terminal,
+// clipped to maxw columns, and returns it with its height in rows (the largest
+// OSC 66 scale, at least 1). Like tcell rendering, it only lets through SGR,
+// EL and OSC 8 sequences, plus well-formed OSC 66 runs; any other control
+// character becomes U+FFFD.
+func renderRawLine(s string, maxw int) (string, int) {
+	var b strings.Builder
+	col, height := 0, 1
+
+	for i := 0; i < len(s); {
+		if seq := readTermSequence(s[i:]); seq != "" {
+			// EL would erase to the end of the terminal row, past the pane;
+			// the caller already blanks the line's rows.
+			if !strings.HasSuffix(seq, "K") {
+				b.WriteString(seq)
+			}
+			i += len(seq)
+			continue
+		}
+
+		if n, scale, width, meta, text := readMulticell(s[i:]); n > 0 {
+			i += n
+			text = sanitizePreview(strings.ReplaceAll(text, "\t", " "))
+			if width > 0 {
+				// explicit width: the run is one unit, keep it whole or not at all
+				if col+scale*width > maxw {
+					break
+				}
+				col += scale * width
+			} else {
+				// clip by grapheme, each takes scale times its width
+				fit := 0
+				for fit < len(text) {
+					gc, w := firstGrapheme(text[fit:])
+					if gc == "" || col+scale*w > maxw {
+						break
+					}
+					col += scale * w
+					fit += len(gc)
+				}
+				if fit < len(text) {
+					text = text[:fit]
+					i = len(s) // clipped: nothing after it fits either
+				}
+			}
+			if text != "" {
+				b.WriteString("\033]66;" + meta + ";" + text + "\a")
+				height = max(height, scale)
+			}
+			continue
+		}
+
+		gc, w := firstGrapheme(s[i:])
+		n := max(len(gc), 1)
+		switch {
+		case gc == "\t":
+			w = gOpts.tabstop - col%gOpts.tabstop
+			gc = strings.Repeat(" ", w)
+		case !isPrintable(gc):
+			gc, w = "�", 1
+		}
+		if col+w > maxw {
+			break
+		}
+		b.WriteString(gc)
+		col += w
+		i += n
+	}
+
+	return b.String(), height
 }

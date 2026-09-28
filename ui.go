@@ -610,7 +610,7 @@ type reg struct {
 	loadTime time.Time
 	path     string
 	lines    []string
-	sixel    bool
+	sixel    bool // drawn raw to the terminal: sixel images or OSC 66 text
 	height   int
 }
 
