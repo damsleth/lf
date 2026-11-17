@@ -220,6 +220,19 @@ func printVersion() {
 	fmt.Printf("Go version: %s\n", buildInfo.GoVersion)
 }
 
+// ponytail: POSIX sh only (bash/zsh); other shells use etc/lfcd.*
+const shellInitScript = `lf() {
+    # a child process cannot change its parent's cwd, so cd happens here
+    _lf_out="$(command lf -print-last-dir "$@")" || return
+    if [ -d "$_lf_out" ]; then
+        cd -- "$_lf_out"
+    elif [ -n "$_lf_out" ]; then
+        printf '%s\n' "$_lf_out"
+    fi
+    unset _lf_out
+}
+`
+
 func main() {
 	flag.Usage = func() {
 		f := flag.CommandLine.Output()
@@ -265,6 +278,11 @@ Options:
 		"print-last-dir",
 		false,
 		"print the last dir to stdout on exit (to use for cd)")
+
+	shellInit := flag.Bool(
+		"shell-init",
+		false,
+		"print a shell function that wraps lf to cd to the last dir on exit (eval in ~/.zshrc or ~/.bashrc)")
 
 	printSelection := flag.Bool(
 		"print-selection",
@@ -340,6 +358,8 @@ Options:
 		flag.Usage()
 	case *showVersion:
 		printVersion()
+	case *shellInit:
+		os.Stdout.WriteString(shellInitScript)
 	case *remoteCmd != "":
 		resp, err := remote(*remoteCmd)
 		if err != nil {

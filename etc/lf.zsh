@@ -20,6 +20,7 @@ arguments=(
     '-last-dir-path[path to the file to write the last dir on exit (to use for cd)]'
     '-log[path to the log file to write messages]'
     '-memprofile[path to the file to write the memory profile]'
+    '-shell-init[print a shell function that cds to the last dir on exit]'
     '-print-last-dir[print the last dir to stdout on exit (to use for cd)]'
     '-print-selection[print the selected files to stdout on open (to use as open file dialog)]'
     '-remote[send remote command to server]'

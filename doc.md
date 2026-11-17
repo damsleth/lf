@@ -18,6 +18,7 @@ lf - terminal file manager
 [**-remote** *command*]
 [**-selection-path** *path*]
 [**-server**]
+[**-shell-init**]
 [**-single**]
 [**-version**]
 [*path*]
@@ -69,6 +70,10 @@ Use the config file at *path* instead of the normal search locations. This only 
 **-print-last-dir**
 
 Print the last directory to stdout when lf exits. This can be used to let lf change your shell's working directory. See `CHANGING DIRECTORY` for more details.
+
+**-shell-init**
+
+Print a POSIX shell function named `lf` that wraps lf with **-print-last-dir** so your shell stays in the last directory when lf exits. Add `eval "$(command lf -shell-init)"` to `~/.zshrc` or `~/.bashrc`.
 
 **-last-dir-path** *path*
 
@@ -2005,7 +2010,7 @@ Otherwise, it will fall back to calling the preview script again when the file i
 
 lf changes the working directory of the process to the current directory so that shell commands always work in the displayed directory.
 After quitting, it returns to the original directory where it is first launched like all shell programs.
-If you want to stay in the current directory after quitting, you can use one of the example lfcd wrapper shell scripts provided in the repository at
+If you want to stay in the current directory after quitting, add `eval "$(command lf -shell-init)"` to your bash or zsh rc file, or use one of the example lfcd wrapper shell scripts provided in the repository at
 https://github.com/gokcehan/lf/tree/master/etc
 
 There is a special command `on-cd` that runs a shell command when it is defined and the directory is changed.
